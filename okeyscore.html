@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Okey 101</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #0f0f13;
+            --surface: #1a1a24;
+            --surface2: #22222f;
+            --border: #2e2e40;
+            --green: #22c55e;
+            --green-dark: #16a34a;
+            --red: #ef4444;
+            --red-dark: #dc2626;
+            --gold: #f59e0b;
+            --blue: #3b82f6;
+            --text: #f1f1f5;
+            --muted: #8888aa;
+            --radius: 14px;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* ── SHARED ── */
+        .page { display: none; padding: 16px; max-width: 640px; margin: 0 auto; }
+        .page.active { display: block; }
+
+        .status-bar {
+            display: flex; align-items: center; justify-content: center;
+            gap: 6px; font-size: 0.72rem; color: var(--muted);
+            padding: 10px 0 4px;
+        }
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #555; transition: background 0.3s; }
+        .status-dot.connected { background: var(--green); }
+        .status-dot.connecting { background: var(--gold); animation: pulse 1s infinite; }
+
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+        .app-header {
+            text-align: center; padding: 12px 0 20px;
+        }
+        .app-header h1 {
+            font-size: 1.6rem; font-weight: 800; color: var(--green);
+            letter-spacing: -0.5px; display: flex; align-items: center;
+            justify-content: center; gap: 10px;
+        }
+        .app-header h1 img { width: 36px; height: 36px; object-fit: contain; border-radius: 8px; }
+        .app-header p { font-size: 0.82rem; color: var(--muted); margin-top: 4px; }
+
+        /* ── LOBBY ── */
+        .lobby-actions { display: grid; gap: 10px; margin-bottom: 24px; }
+
+        .btn { padding: 15px; border: none; border-radius: 10px; font-size: 1rem;
+               font-weight: 700; cursor: pointer; transition: opacity 0.2s, transform 0.1s; }
+        .btn:active { transform: scale(0.97); }
+        .btn-primary { background: var(--green); color: #fff; width: 100%; }
+        .btn-primary:hover { background: var(--green-dark); }
+
+        .section-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 12px;
+        }
+        .section-header h3 {
+            font-size: 0.78rem; text-transform: uppercase;
+            letter-spacing: 1px; color: var(--muted); font-weight: 700;
+        }
+        .badge {
+            font-size: 0.75rem; color: var(--muted);
+            background: var(--surface); padding: 3px 10px;
+            border-radius: 20px; border: 1px solid var(--border);
+        }
+
+        .tables-list { display: grid; gap: 10px; }
+
+        .table-card {
+            background: var(--surface); border: 1.5px solid var(--border);
+            border-radius: var(--radius); padding: 16px;
+            cursor: pointer; transition: border-color 0.2s, transform 0.15s;
+            display: flex; justify-content: space-between; align-items: center;
+            gap: 12px;
+        }
+        .table-card:hover { border-color: var(--green); transform: translateY(-1px); }
+
+        .table-info { flex: 1; min-width: 0; }
+        .table-name { font-size: 1rem; font-weight: 700; margin-bottom: 5px;
+                      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .table-players { font-size: 0.8rem; color: var(--muted); }
+
+        .table-scores {
+            display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+            flex-shrink: 0;
+        }
+        .table-score-row { font-size: 0.78rem; color: var(--muted); }
+        .table-rounds { font-size: 0.7rem; color: var(--border); margin-top: 3px; text-align: right; }
+
+        .table-del {
+            color: var(--border); font-size: 0.85rem; cursor: pointer;
+            padding: 6px; border-radius: 6px; transition: color 0.2s, background 0.2s;
+            flex-shrink: 0;
+        }
+        .table-del:hover { color: var(--red); background: #2a1414; }
+
+        .empty-lobby {
+            text-align: center; color: var(--muted); font-size: 0.9rem;
+            padding: 40px 20px;
+            background: var(--surface); border: 1.5px dashed var(--border);
+            border-radius: var(--radius);
+        }
+        .empty-lobby p:first-child { font-size: 2rem; margin-bottom: 10px; }
+
+        .lock-icon { font-size: 0.8rem; margin-left: 4px; opacity: 0.7; }
+
+        .viewer-banner {
+            background: #1e1a0a; border: 1.5px solid var(--gold);
+            border-radius: 10px; padding: 10px 16px;
+            font-size: 0.82rem; color: var(--gold); font-weight: 600;
+            display: flex; align-items: center; gap: 8px;
+            margin-bottom: 16px;
+        }
+        .viewer-banner .enter-btn {
+            margin-left: auto; background: var(--gold); color: #000;
+            border: none; border-radius: 6px; padding: 5px 12px;
+            font-size: 0.78rem; font-weight: 700; cursor: pointer;
+        }
+
+        /* ── GAME ── */
+        .game-nav {
+            display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+            padding-top: 10px;
+        }
+        .back-btn {
+            background: var(--surface2); border: 1.5px solid var(--border);
+            color: var(--muted); padding: 8px 14px; border-radius: 8px;
+            cursor: pointer; font-size: 0.85rem; font-weight: 600;
+            transition: all 0.2s; flex-shrink: 0;
+        }
+        .back-btn:hover { border-color: var(--green); color: var(--green); }
+
+        .table-title {
+            font-size: 1rem; font-weight: 700; color: var(--text);
+            flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            cursor: pointer;
+        }
+        .table-title .edit-icon { font-size: 0.7rem; opacity: 0.4; margin-left: 4px; }
+
+        /* PLAYER CARDS */
+        .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+
+        .card {
+            background: var(--surface); border: 2px solid var(--border);
+            border-radius: var(--radius); padding: 18px 12px;
+            text-align: center; position: relative; transition: border-color 0.3s;
+        }
+        .card.winner { border-color: var(--green); background: linear-gradient(135deg, #1a1a24, #162414); }
+        .card.loser  { border-color: var(--red);   background: linear-gradient(135deg, #1a1a24, #231414); }
+
+        @keyframes fire-glow {
+            0%   { box-shadow: 0 0 8px 2px #ff4500, 0 0 20px 6px #ff6a00, 0 0 40px 10px #ff000066; border-color: #ff6a00; }
+            25%  { box-shadow: 0 0 12px 4px #ff8c00, 0 0 28px 8px #ff4500, 0 0 55px 14px #ff450055; border-color: #ffae00; }
+            50%  { box-shadow: 0 0 16px 6px #ffae00, 0 0 35px 12px #ff6a00, 0 0 65px 18px #ff6a0044; border-color: #ff4500; }
+            75%  { box-shadow: 0 0 10px 3px #ff4500, 0 0 22px 7px #ff8c00, 0 0 45px 12px #ff000066; border-color: #ff8c00; }
+            100% { box-shadow: 0 0 8px 2px #ff4500, 0 0 20px 6px #ff6a00, 0 0 40px 10px #ff000066; border-color: #ff6a00; }
+        }
+        @keyframes fire-bg {
+            0%,100% { background: linear-gradient(135deg, #1a1a24, #2a1000); }
+            50%     { background: linear-gradient(135deg, #1a1a24, #3a1500); }
+        }
+        .card.on-fire { animation: fire-glow 1.2s ease-in-out infinite, fire-bg 1.8s ease-in-out infinite; }
+        .card.on-fire .card-score { color: #ff8c00 !important; text-shadow: 0 0 12px #ff4500, 0 0 24px #ff6a00; }
+
+        .fire-badge {
+            position: absolute; top: -12px; right: 10px; font-size: 1.1rem;
+            animation: flicker 0.6s ease-in-out infinite alternate;
+        }
+        @keyframes flicker { 0%{opacity:1;transform:scale(1) rotate(-5deg)} 100%{opacity:0.7;transform:scale(1.15) rotate(5deg)} }
+
+        .card-badge {
+            position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+            font-size: 0.65rem; font-weight: 700; padding: 2px 10px;
+            border-radius: 20px; letter-spacing: 0.5px; white-space: nowrap;
+        }
+        .winner .card-badge { background: var(--green); color: #fff; }
+        .loser  .card-badge { background: var(--red);   color: #fff; }
+
+        .card-name {
+            font-size: 0.95rem; font-weight: 700; color: var(--text);
+            margin-bottom: 10px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+        }
+        .card-name .edit-icon { font-size: 0.7rem; opacity: 0.4; }
+        .card-score { font-size: 2.6rem; font-weight: 800; line-height: 1; }
+        .winner .card-score { color: var(--green); }
+        .loser  .card-score { color: var(--red); }
+        .card:not(.winner):not(.loser) .card-score { color: var(--text); }
+        .card-rounds { font-size: 0.72rem; color: var(--muted); margin-top: 6px; }
+
+        /* INPUT */
+        .input-section {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 16px; margin-bottom: 20px;
+        }
+        .input-section h3 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 14px; }
+        .input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+        .input-group label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 6px; text-align: center; font-weight: 600; }
+        .input-group input {
+            width: 100%; background: var(--surface2); border: 1.5px solid var(--border);
+            color: var(--text); padding: 14px 10px; border-radius: 10px;
+            text-align: center; font-size: 1.3rem; font-weight: 700; transition: border-color 0.2s;
+            -moz-appearance: textfield;
+        }
+        .input-group input::-webkit-inner-spin-button,
+        .input-group input::-webkit-outer-spin-button { -webkit-appearance: none; }
+        .input-group input:focus { outline: none; border-color: var(--green); }
+
+        .btn-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+        .btn-save { background: var(--green); color: #fff; flex: 1; padding: 15px; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; transition: background 0.2s; }
+        .btn-save:hover { background: var(--green-dark); }
+        .btn-undo {
+            background: var(--surface2); border: 1.5px solid var(--border);
+            color: var(--muted); padding: 15px 18px; font-size: 1.2rem;
+            border-radius: 10px; cursor: pointer; transition: all 0.2s;
+        }
+        .btn-undo:hover { border-color: var(--gold); color: var(--gold); }
+        .btn-reset {
+            width: 100%; background: transparent; border: 1.5px solid var(--border);
+            color: var(--muted); padding: 11px; font-size: 0.85rem; margin-top: 10px;
+            border-radius: 10px; cursor: pointer; transition: all 0.2s; font-weight: 600;
+        }
+        .btn-reset:hover { border-color: var(--red); color: var(--red); }
+
+        .btn-delete-table {
+            width: 100%; background: transparent; border: 1.5px solid #3a1a1a;
+            color: #7a3030; padding: 11px; font-size: 0.85rem; margin-top: 6px;
+            border-radius: 10px; cursor: pointer; transition: all 0.2s; font-weight: 600;
+        }
+        .btn-delete-table:hover { border-color: var(--red); color: var(--red); background: #1a0808; }
+
+        /* ── SUPER ADMIN ── */
+        .super-admin-btn {
+            position: fixed; bottom: 18px; right: 18px;
+            background: transparent; border: 1px solid #333; color: #444;
+            border-radius: 50%; width: 34px; height: 34px; font-size: 0.9rem;
+            cursor: pointer; z-index: 50; transition: all 0.2s;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .super-admin-btn:hover { border-color: var(--gold); color: var(--gold); }
+        .super-admin-btn.active { border-color: var(--gold); color: var(--gold); background: #1e1a0a; }
+
+        /* ── SES PANELİ ── */
+        .sound-panel {
+            background: #0e1a0e; border: 1.5px solid #2a4a2a;
+            border-radius: var(--radius); padding: 14px 16px;
+            margin-bottom: 16px; display: none;
+        }
+        .sound-panel h4 {
+            font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px;
+            color: #4a9a4a; margin-bottom: 12px; font-weight: 700;
+        }
+        .sound-panel-btns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+        .sound-panel-btns button {
+            padding: 12px 6px; background: #12261a; border: 1.5px solid #2a4a2a;
+            border-radius: 10px; color: #6abf6a; font-size: 0.8rem; font-weight: 700;
+            cursor: pointer; transition: all 0.2s; text-align: center;
+        }
+        .sound-panel-btns button:hover { border-color: var(--green); color: var(--green); background: #162e1e; }
+
+        /* HISTORY TABLE */
+        .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .history-header h3 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); font-weight: 700; }
+
+        .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        thead th { background: var(--surface2); color: var(--muted); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 11px 10px; text-align: center; }
+        tbody tr { border-top: 1px solid var(--border); transition: background 0.15s; }
+        tbody tr:hover { background: var(--surface2); }
+        tbody td { padding: 12px 10px; text-align: center; font-size: 0.95rem; }
+        td.round-num { color: var(--muted); font-size: 0.8rem; font-weight: 600; width: 40px; }
+        td.score-pos { color: var(--green); font-weight: 700; }
+        td.score-neg { color: var(--red); font-weight: 700; }
+        td.score-zero { color: var(--muted); }
+        td.del-cell { width: 36px; cursor: pointer; color: var(--border); font-size: 0.85rem; transition: color 0.2s; }
+        tr:hover td.del-cell { color: var(--red); }
+
+        td.editable { cursor: pointer; position: relative; }
+        td.editable:hover::after { content: '✎'; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 0.7rem; color: var(--muted); opacity: 0.6; }
+        td.editable input { width: 80px; background: var(--surface2); border: 1.5px solid var(--green); color: var(--text); padding: 4px 6px; border-radius: 6px; text-align: center; font-size: 0.95rem; font-weight: 700; outline: none; -moz-appearance: textfield; }
+        td.editable input::-webkit-inner-spin-button,
+        td.editable input::-webkit-outer-spin-button { -webkit-appearance: none; }
+        td.editing { background: #1e2a1e; }
+
+        .empty-state { padding: 36px 20px; text-align: center; color: var(--muted); font-size: 0.9rem; }
+
+        /* MODAL */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 100; align-items: center; justify-content: center; padding: 20px; }
+        .modal-overlay.open { display: flex; }
+        .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; width: 340px; max-width: 100%; }
+        .modal h3 { font-size: 1rem; margin-bottom: 16px; color: var(--text); }
+        .modal label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 5px; font-weight: 600; }
+        .modal input {
+            width: 100%; background: var(--surface2); border: 1.5px solid var(--border);
+            color: var(--text); padding: 12px 14px; border-radius: 10px;
+            font-size: 1rem; margin-bottom: 14px;
+        }
+        .modal input:focus { outline: none; border-color: var(--green); }
+        .modal-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+        .modal-btns button { padding: 11px; border-radius: 8px; border: none; font-size: 0.9rem; font-weight: 700; cursor: pointer; }
+        .modal-cancel { background: var(--surface2); color: var(--muted); border: 1.5px solid var(--border) !important; }
+        .modal-save { background: var(--green); color: #fff; }
+
+        /* TOAST */
+        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 10px 22px; border-radius: 30px; font-size: 0.88rem; font-weight: 600; transition: transform 0.3s ease; z-index: 200; white-space: nowrap; }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+    </style>
+</head>
+<body>
+
+<!-- ══════════════════════ LOBBY PAGE ══════════════════════ -->
+<div class="page active" id="lobbyPage">
+    <div class="status-bar">
+        <div class="status-dot connecting" id="statusDot"></div>
+        <span id="statusText">Bağlanıyor...</span>
+    </div>
+
+    <div class="app-header">
+        <h1><img src="/logo.png" alt="Logo"> Okey 101</h1>
+        <p>Masa seç veya yeni masa oluştur</p>
+    </div>
+
+    <div class="lobby-actions">
+        <button class="btn btn-primary" onclick="openCreateModal()">+ Yeni Masa Oluştur</button>
+    </div>
+    <button class="super-admin-btn" id="superAdminLobbyBtn" onclick="openSuperAdminModal()" title="Süper Yönetici">🔑</button>
+
+    <div class="section-header">
+        <h3>Masalar</h3>
+        <div class="badge" id="tableCountBadge">0 masa</div>
+    </div>
+
+    <div class="tables-list" id="tablesList">
+        <div class="empty-lobby">
+            <p>🀄</p>
+            <p>Henüz masa yok.<br>Yeni bir masa oluşturun!</p>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════ GAME PAGE ══════════════════════ -->
+<div class="page" id="gamePage">
+    <div class="game-nav">
+        <button class="back-btn" onclick="goLobby()">← Lobiye Dön</button>
+        <div class="table-title" id="gameTableTitle">
+            Masa <span class="edit-icon">✏️</span>
+        </div>
+        <div class="status-bar" style="padding:0">
+            <div class="status-dot connecting" id="statusDot2"></div>
+        </div>
+    </div>
+
+    <!-- Ses Paneli — sadece süper admin görür -->
+    <div class="sound-panel" id="soundPanel">
+        <h4>🎵 Ses Paneli</h4>
+        <div class="sound-panel-btns">
+            <button onclick="soundAction1()">🔔<br>Buton 1</button>
+            <button onclick="soundAction2()">🎺<br>Buton 2</button>
+            <button onclick="soundAction3()">🥁<br>Buton 3</button>
+        </div>
+    </div>
+
+    <div class="viewer-banner" id="viewerBanner" style="display:none">
+        👁 Sadece izleyicisiniz — düzenlemek için şifre girin
+        <button class="enter-btn" onclick="openJoinPasswordModal(currentTable.id)">Şifre Gir</button>
+    </div>
+
+    <div class="cards">
+        <div class="card" id="card1">
+            <div class="card-name" onclick="openRenameModal(1)" id="cardName1">
+                Oyuncu 1 <span class="edit-icon">✏️</span>
+            </div>
+            <div class="card-score" id="total1">0</div>
+            <div class="card-rounds" id="rounds1">0 tur</div>
+        </div>
+        <div class="card" id="card2">
+            <div class="card-name" onclick="openRenameModal(2)" id="cardName2">
+                Oyuncu 2 <span class="edit-icon">✏️</span>
+            </div>
+            <div class="card-score" id="total2">0</div>
+            <div class="card-rounds" id="rounds2">0 tur</div>
+        </div>
+    </div>
+
+    <div class="input-section" id="inputSection">
+        <h3>Tur Puanı Gir</h3>
+        <div class="input-row">
+            <div class="input-group">
+                <label id="inputLabel1">Oyuncu 1</label>
+                <input type="number" id="inputT1" placeholder="0" inputmode="numeric">
+            </div>
+            <div class="input-group">
+                <label id="inputLabel2">Oyuncu 2</label>
+                <input type="number" id="inputT2" placeholder="0" inputmode="numeric">
+            </div>
+        </div>
+        <div class="btn-row">
+            <button class="btn-save" onclick="addRound()">Sıradaki Tut</button>
+            <button class="btn-undo" onclick="undoRound()" title="Son turu geri al">↩</button>
+        </div>
+        <button class="btn-reset" onclick="resetGame()">🗑 Oyunu Sıfırla</button>
+        <button class="btn-delete-table" id="deleteTableBtn" onclick="deleteCurrentTable()" style="display:none">✕ Masayı Sil</button>
+    </div>
+
+    <div class="history-header">
+        <h3>Geçmiş Turlar</h3>
+        <div class="badge" id="roundCountBadge">0 tur</div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th id="th1">Oyuncu 1</th>
+                    <th id="th2">Oyuncu 2</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="historyTable">
+                <tr><td colspan="4" class="empty-state">Henüz tur girilmedi</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ══════════════════════ MODALS ══════════════════════ -->
+
+<!-- Create table -->
+<div class="modal-overlay" id="createModal" onclick="closeModalOverlay('createModal', event)">
+    <div class="modal">
+        <h3>Yeni Masa Oluştur</h3>
+        <label>Masa Adı</label>
+        <input type="text" id="newTableName" placeholder="Örn: Kuzey Masası" maxlength="30">
+        <label>1. Oyuncu</label>
+        <input type="text" id="newP1" placeholder="Oyuncu 1" maxlength="20">
+        <label>2. Oyuncu</label>
+        <input type="text" id="newP2" placeholder="Oyuncu 2" maxlength="20">
+        <label>🔒 Düzenleme Şifresi</label>
+        <input type="password" id="newPassword" placeholder="Şifreyi boş bırakırsanız herkes düzenleyebilir" maxlength="30">
+        <div class="modal-btns">
+            <button class="modal-cancel" onclick="closeModal('createModal')">İptal</button>
+            <button class="modal-save" onclick="createTable()">Oluştur</button>
+        </div>
+    </div>
+</div>
+
+<!-- Super Admin Login -->
+<div class="modal-overlay" id="superAdminModal" onclick="closeModalOverlay('superAdminModal', event)">
+    <div class="modal">
+        <h3>🔑 Süper Yönetici Girişi</h3>
+        <label>Admin Şifresi</label>
+        <input type="password" id="superAdminInput" placeholder="Şifre..." maxlength="30">
+        <div class="modal-btns">
+            <button class="modal-cancel" onclick="closeModal('superAdminModal')">İptal</button>
+            <button class="modal-save" onclick="submitSuperAdmin()">Giriş Yap</button>
+        </div>
+    </div>
+</div>
+
+<!-- Join password -->
+<div class="modal-overlay" id="joinPasswordModal" onclick="closeModalOverlay('joinPasswordModal', event)">
+    <div class="modal">
+        <h3>🔒 Şifre Gerekli</h3>
+        <label>Bu masayı düzenlemek için şifreyi girin</label>
+        <input type="password" id="joinPasswordInput" placeholder="Şifre..." maxlength="30">
+        <p style="font-size:0.75rem;color:var(--muted);margin:-6px 0 12px">Şifreyi bilmiyorsanız boş bırakın — sadece izleyici olarak girersiniz.</p>
+        <div class="modal-btns">
+            <button class="modal-cancel" onclick="closeModal('joinPasswordModal')">İptal</button>
+            <button class="modal-save" onclick="submitJoinPassword()">Gir</button>
+        </div>
+    </div>
+</div>
+
+<!-- Rename player -->
+<div class="modal-overlay" id="renameModal" onclick="closeModalOverlay('renameModal', event)">
+    <div class="modal">
+        <h3>Oyuncu Adını Değiştir</h3>
+        <input type="text" id="renameInput" placeholder="Yeni isim..." maxlength="20">
+        <div class="modal-btns">
+            <button class="modal-cancel" onclick="closeModal('renameModal')">İptal</button>
+            <button class="modal-save" onclick="savePlayerName()">Kaydet</button>
+        </div>
+    </div>
+</div>
+
+<!-- Rename table -->
+<div class="modal-overlay" id="renameTableModal" onclick="closeModalOverlay('renameTableModal', event)">
+    <div class="modal">
+        <h3>Masa Adını Değiştir</h3>
+        <input type="text" id="renameTableInput" placeholder="Yeni masa adı..." maxlength="30">
+        <div class="modal-btns">
+            <button class="modal-cancel" onclick="closeModal('renameTableModal')">İptal</button>
+            <button class="modal-save" onclick="saveTableName()">Kaydet</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+    const socket = io();
+
+    let currentTable = null;
+    let editingPlayer = null;
+    let allTables = [];
+    let isAdmin = false;
+    let isSuperAdmin = false;
+    let pendingJoinId = null;
+
+    // ── STATUS ──
+    function setStatus(connected) {
+        const cls = connected ? 'status-dot connected' : 'status-dot connecting';
+        const txt = connected ? 'Canlı bağlantı aktif' : 'Bağlanıyor...';
+        document.getElementById('statusDot').className = cls;
+        document.getElementById('statusDot2').className = cls.replace(' connecting', '').replace('connected', 'connected');
+        document.getElementById('statusText').textContent = txt;
+    }
+
+    socket.on('connect', () => setStatus(true));
+    socket.on('disconnect', () => setStatus(false));
+
+    // ── LOBBY ──
+    socket.on('tables_list', (list) => {
+        allTables = list;
+        renderLobby(list);
+    });
+
+    function renderLobby(list) {
+        const el = document.getElementById('tablesList');
+        document.getElementById('tableCountBadge').textContent = list.length + ' masa';
+
+        if (list.length === 0) {
+            el.innerHTML = `<div class="empty-lobby"><p>🀄</p><p>Henüz masa yok.<br>Yeni bir masa oluşturun!</p></div>`;
+            return;
+        }
+
+        list.sort((a, b) => b.created_at - a.created_at);
+
+        el.innerHTML = '';
+        list.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'table-card';
+            const leader = t.totals[0] < t.totals[1] ? 0 : (t.totals[1] < t.totals[0] ? 1 : -1);
+            const lockIcon = t.has_password ? '<span class="lock-icon">🔒</span>' : '';
+            div.innerHTML = `
+                <div class="table-info">
+                    <div class="table-name">${escHtml(t.name)}${lockIcon}</div>
+                    <div class="table-players">${escHtml(t.names[0])} vs ${escHtml(t.names[1])}</div>
+                </div>
+                <div class="table-scores">
+                    <div class="table-score-row" style="color:${leader===0?'var(--green)':(leader===1?'var(--red)':'var(--muted)')}">${escHtml(t.names[0])}: <strong>${t.totals[0]}</strong></div>
+                    <div class="table-score-row" style="color:${leader===1?'var(--green)':(leader===0?'var(--red)':'var(--muted)')}">${escHtml(t.names[1])}: <strong>${t.totals[1]}</strong></div>
+                    <div class="table-rounds">${t.round_count} tur</div>
+                </div>
+            `;
+            div.onclick = () => joinTable(t);
+            el.appendChild(div);
+        });
+    }
+
+    function joinTable(tableOrId) {
+        const t = (typeof tableOrId === 'object') ? tableOrId : allTables.find(x => x.id === tableOrId);
+        const id = t ? t.id : tableOrId;
+        // Süper admin aktifse direkt gir
+        if (isSuperAdmin) {
+            socket.emit('join_table', { id, password: 'yarakhasan' });
+        } else if (t && t.has_password) {
+            openJoinPasswordModal(id);
+        } else {
+            socket.emit('join_table', { id, password: '' });
+        }
+    }
+
+    function openJoinPasswordModal(id) {
+        pendingJoinId = id;
+        document.getElementById('joinPasswordInput').value = '';
+        document.getElementById('joinPasswordModal').classList.add('open');
+        setTimeout(() => document.getElementById('joinPasswordInput').focus(), 80);
+    }
+
+    function submitJoinPassword() {
+        const pw = document.getElementById('joinPasswordInput').value;
+        closeModal('joinPasswordModal');
+        socket.emit('join_table', { id: pendingJoinId, password: pw });
+        pendingJoinId = null;
+    }
+
+    socket.on('join_ok', (data) => {
+        currentTable = data.table;
+        isAdmin = data.is_admin;
+        isSuperAdmin = data.is_super_admin || false;
+        renderGame(currentTable);
+        showPage('gamePage');
+    });
+
+    socket.on('super_admin_ok', () => {
+        isSuperAdmin = true;
+        document.getElementById('superAdminLobbyBtn').classList.add('active');
+        showToast('🔑 Süper yönetici girişi başarılı');
+    });
+
+    socket.on('error', (data) => showToast('⚠️ ' + data.msg));
+
+    function goLobby() {
+        if (currentTable) {
+            socket.emit('leave_table', { id: currentTable.id });
+        }
+        currentTable = null;
+        isAdmin = false;
+        // isSuperAdmin oturumda kalır, lobiye dönünce sıfırlanmaz
+        showPage('lobbyPage');
+        if (isSuperAdmin) document.getElementById('superAdminLobbyBtn').classList.add('active');
+    }
+
+    function deleteCurrentTable() {
+        if (!currentTable) return;
+        if (!confirm('Bu masayı tamamen silmek istediğine emin misin?')) return;
+        const id = currentTable.id;
+        socket.emit('leave_table', { id });
+        socket.emit('delete_table', { id });
+        currentTable = null;
+        isAdmin = false;
+        showPage('lobbyPage');
+    }
+
+    // ── GAME STATE ──
+    socket.on('state', (table) => {
+        if (!currentTable || table.id !== currentTable.id) return;
+        currentTable = table;
+        renderGame(table);
+    });
+
+    function getTotal(rounds, idx) {
+        return rounds.reduce((s, r) => s + (r[idx] || 0), 0);
+    }
+
+    function renderGame(table) {
+        const rounds = table.rounds || [];
+        const t1 = getTotal(rounds, 0);
+        const t2 = getTotal(rounds, 1);
+        const count = rounds.length;
+
+        // Admin-sensitive UI
+        const banner = document.getElementById('viewerBanner');
+        const inputSection = document.getElementById('inputSection');
+        banner.style.display = isAdmin ? 'none' : 'flex';
+        if (inputSection) inputSection.style.display = isAdmin ? '' : 'none';
+        document.querySelectorAll('.btn-undo, .btn-reset').forEach(el => el.style.display = isAdmin ? '' : 'none');
+        const delBtn = document.getElementById('deleteTableBtn');
+        if (delBtn) delBtn.style.display = isAdmin ? '' : 'none';
+
+        const soundPanel = document.getElementById('soundPanel');
+        if (soundPanel) soundPanel.style.display = isSuperAdmin ? 'block' : 'none';
+
+        const titleEl = document.getElementById('gameTableTitle');
+        if (isAdmin) {
+            titleEl.innerHTML = escHtml(table.name) + ' <span class="edit-icon">✏️</span>';
+            titleEl.onclick = () => openRenameTableModal();
+            titleEl.style.cursor = 'pointer';
+        } else {
+            titleEl.innerHTML = escHtml(table.name);
+            titleEl.onclick = null;
+            titleEl.style.cursor = 'default';
+        }
+
+        ['1','2'].forEach(i => {
+            const idx = parseInt(i) - 1;
+            const name = table.names[idx];
+            if (isAdmin) {
+                document.getElementById('cardName' + i).innerHTML = escHtml(name) + ' <span class="edit-icon">✏️</span>';
+            } else {
+                document.getElementById('cardName' + i).textContent = name;
+            }
+            document.getElementById('inputLabel' + i).textContent = name;
+            document.getElementById('th' + i).textContent = name;
+        });
+
+        document.getElementById('total1').textContent = t1;
+        document.getElementById('total2').textContent = t2;
+        document.getElementById('rounds1').textContent = count + ' tur';
+        document.getElementById('rounds2').textContent = count + ' tur';
+        document.getElementById('roundCountBadge').textContent = count + ' tur';
+
+        const card1 = document.getElementById('card1');
+        const card2 = document.getElementById('card2');
+        card1.classList.remove('winner', 'loser', 'on-fire');
+        card2.classList.remove('winner', 'loser', 'on-fire');
+        document.querySelectorAll('.card-badge, .fire-badge').forEach(e => e.remove());
+
+        if (count > 0) {
+            const diff = Math.abs(t1 - t2);
+            const onFire = diff > 400;
+            if (t1 < t2) {
+                card1.classList.add('winner'); card2.classList.add('loser');
+                addBadge(card1, '🏆 Önde'); addBadge(card2, '📉 Geride');
+                if (onFire) { card1.classList.add('on-fire'); addFireBadge(card1); }
+            } else if (t2 < t1) {
+                card2.classList.add('winner'); card1.classList.add('loser');
+                addBadge(card2, '🏆 Önde'); addBadge(card1, '📉 Geride');
+                if (onFire) { card2.classList.add('on-fire'); addFireBadge(card2); }
+            } else {
+                addBadge(card1, '🤝 Beraberlik'); addBadge(card2, '🤝 Beraberlik');
+            }
+        }
+
+        const tbody = document.getElementById('historyTable');
+        if (count === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Henüz tur girilmedi</td></tr>';
+            return;
+        }
+        tbody.innerHTML = '';
+        for (let i = rounds.length - 1; i >= 0; i--) {
+            const r = rounds[i];
+            const row = document.createElement('tr');
+            if (isAdmin) {
+                row.innerHTML = `
+                    <td class="round-num">${i+1}</td>
+                    <td class="editable ${scoreClass(r[0])}" onclick="startEdit(this,${i},0)">${r[0]>0?'+':''}${r[0]}</td>
+                    <td class="editable ${scoreClass(r[1])}" onclick="startEdit(this,${i},1)">${r[1]>0?'+':''}${r[1]}</td>
+                    <td class="del-cell" onclick="deleteRound(${i})">✕</td>
+                `;
+            } else {
+                row.innerHTML = `
+                    <td class="round-num">${i+1}</td>
+                    <td class="${scoreClass(r[0])}">${r[0]>0?'+':''}${r[0]}</td>
+                    <td class="${scoreClass(r[1])}">${r[1]>0?'+':''}${r[1]}</td>
+                    <td></td>
+                `;
+            }
+            tbody.appendChild(row);
+        }
+    }
+
+    function addBadge(card, text) {
+        const b = document.createElement('div'); b.className = 'card-badge'; b.textContent = text; card.appendChild(b);
+    }
+    function addFireBadge(card) {
+        const b = document.createElement('div'); b.className = 'fire-badge'; b.textContent = '🔥'; card.appendChild(b);
+    }
+    function scoreClass(v) { return v > 0 ? 'score-pos' : v < 0 ? 'score-neg' : 'score-zero'; }
+
+    // ── GAME ACTIONS ──
+    function addRound() {
+        const raw1 = document.getElementById('inputT1').value.trim();
+        const raw2 = document.getElementById('inputT2').value.trim();
+        if (raw1 === '' && raw2 === '') { showToast('⚠️ En az bir puan giriniz'); return; }
+        const v1 = raw1 === '' ? 0 : parseInt(raw1);
+        const v2 = raw2 === '' ? 0 : parseInt(raw2);
+        if (isNaN(v1) || isNaN(v2)) { showToast('⚠️ Geçerli sayı giriniz'); return; }
+        socket.emit('add_round', { table_id: currentTable.id, round: [v1, v2] });
+        document.getElementById('inputT1').value = '';
+        document.getElementById('inputT2').value = '';
+        document.getElementById('inputT1').style.borderColor = '';
+        document.getElementById('inputT2').style.borderColor = '';
+        document.getElementById('inputT1').focus();
+        // Diğer kullanıcıların alanlarını da temizle
+        socket.emit('input_update', { table_id: currentTable.id, v1: '', v2: '' });
+        showToast('✓ Tur kaydedildi');
+    }
+
+    function set101(player) {
+        document.getElementById('inputT' + player).value = 101;
+        document.getElementById('inputT' + player).focus();
+    }
+
+    function undoRound() {
+        if (!currentTable || !currentTable.rounds.length) { showToast('Geri alınacak tur yok'); return; }
+        socket.emit('undo_round', { table_id: currentTable.id });
+        showToast('↩ Son tur geri alındı');
+    }
+
+    function deleteRound(idx) {
+        socket.emit('delete_round', { table_id: currentTable.id, idx });
+        showToast('Tur silindi');
+    }
+
+    function resetGame() {
+        if (!confirm('Tüm skorlar silinecek. Emin misin?')) return;
+        socket.emit('reset_game', { table_id: currentTable.id });
+        showToast('🗑 Oyun sıfırlandı');
+    }
+
+    function startEdit(td, roundIdx, playerIdx) {
+        if (td.querySelector('input')) return;
+        const cur = currentTable.rounds[roundIdx][playerIdx];
+        td.classList.add('editing');
+        td.innerHTML = `<input type="number" value="${cur}" inputmode="numeric">`;
+        const input = td.querySelector('input');
+        input.focus(); input.select();
+        function commit() {
+            const raw = input.value.trim();
+            const newVal = raw === '' ? 0 : parseInt(raw);
+            if (!isNaN(newVal) && newVal !== cur) {
+                socket.emit('edit_round', { table_id: currentTable.id, idx: roundIdx, playerIdx, value: newVal });
+                showToast('✓ Skor güncellendi');
+            } else { renderGame(currentTable); }
+        }
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', e => { if(e.key==='Enter') input.blur(); if(e.key==='Escape') renderGame(currentTable); });
+    }
+
+    // ── MODALS ──
+    // ── SUPER ADMIN ──
+    function openSuperAdminModal() {
+        document.getElementById('superAdminInput').value = '';
+        document.getElementById('superAdminModal').classList.add('open');
+        setTimeout(() => document.getElementById('superAdminInput').focus(), 80);
+    }
+
+    function submitSuperAdmin() {
+        const pw = document.getElementById('superAdminInput').value.trim();
+        closeModal('superAdminModal');
+        socket.emit('super_admin_login', { password: pw });
+    }
+
+    // ── SES PANELİ ──
+    function soundAction1() {
+        showToast('🔔 Buton 1 çalıştırıldı');
+    }
+    function soundAction2() {
+        showToast('🎺 Buton 2 çalıştırıldı');
+    }
+    function soundAction3() {
+        showToast('🥁 Buton 3 çalıştırıldı');
+    }
+
+    function openCreateModal() {
+        document.getElementById('newTableName').value = '';
+        document.getElementById('newP1').value = '';
+        document.getElementById('newP2').value = '';
+        document.getElementById('newPassword').value = '';
+        document.getElementById('createModal').classList.add('open');
+        setTimeout(() => document.getElementById('newTableName').focus(), 80);
+    }
+
+    function createTable() {
+        const name     = document.getElementById('newTableName').value.trim() || 'Yeni Masa';
+        const p1       = document.getElementById('newP1').value.trim() || 'Oyuncu 1';
+        const p2       = document.getElementById('newP2').value.trim() || 'Oyuncu 2';
+        const password = document.getElementById('newPassword').value.trim();
+        socket.emit('create_table', { name, p1, p2, password });
+        closeModal('createModal');
+    }
+
+    function openRenameModal(player) {
+        if (!isAdmin) return;
+        editingPlayer = player - 1;
+        document.getElementById('renameInput').value = currentTable.names[editingPlayer];
+        document.getElementById('renameModal').classList.add('open');
+        setTimeout(() => document.getElementById('renameInput').focus(), 80);
+    }
+
+    function savePlayerName() {
+        const val = document.getElementById('renameInput').value.trim();
+        if (!val) { showToast('İsim boş olamaz'); return; }
+        socket.emit('rename_player', { table_id: currentTable.id, idx: editingPlayer, name: val });
+        closeModal('renameModal');
+        showToast('✓ İsim güncellendi');
+    }
+
+    function openRenameTableModal() {
+        document.getElementById('renameTableInput').value = currentTable.name;
+        document.getElementById('renameTableModal').classList.add('open');
+        setTimeout(() => document.getElementById('renameTableInput').focus(), 80);
+    }
+
+    function saveTableName() {
+        const val = document.getElementById('renameTableInput').value.trim();
+        if (!val) { showToast('İsim boş olamaz'); return; }
+        socket.emit('rename_table', { table_id: currentTable.id, name: val });
+        closeModal('renameTableModal');
+        showToast('✓ Masa adı güncellendi');
+    }
+
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+    function closeModalOverlay(id, e) { if (e.target === document.getElementById(id)) closeModal(id); }
+
+    // Enter keys
+    document.getElementById('newP2').addEventListener('keydown', e => { if(e.key==='Enter') createTable(); });
+    document.getElementById('newPassword').addEventListener('keydown', e => { if(e.key==='Enter') createTable(); });
+    document.getElementById('joinPasswordInput').addEventListener('keydown', e => { if(e.key==='Enter') submitJoinPassword(); if(e.key==='Escape') closeModal('joinPasswordModal'); });
+    document.getElementById('superAdminInput').addEventListener('keydown', e => { if(e.key==='Enter') submitSuperAdmin(); if(e.key==='Escape') closeModal('superAdminModal'); });
+    document.getElementById('renameInput').addEventListener('keydown', e => { if(e.key==='Enter') savePlayerName(); if(e.key==='Escape') closeModal('renameModal'); });
+    document.getElementById('renameTableInput').addEventListener('keydown', e => { if(e.key==='Enter') saveTableName(); if(e.key==='Escape') closeModal('renameTableModal'); });
+    document.getElementById('inputT1').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('inputT2').focus(); });
+    document.getElementById('inputT2').addEventListener('keydown', e => { if(e.key==='Enter') addRound(); });
+
+    // ── CANLI GİRİŞ PAYLAŞIMI ──
+    let inputSyncTimer;
+    function emitInputUpdate() {
+        if (!currentTable) return;
+        clearTimeout(inputSyncTimer);
+        inputSyncTimer = setTimeout(() => {
+            socket.emit('input_update', {
+                table_id: currentTable.id,
+                v1: document.getElementById('inputT1').value,
+                v2: document.getElementById('inputT2').value
+            });
+        }, 60);
+    }
+
+    document.getElementById('inputT1').addEventListener('input', emitInputUpdate);
+    document.getElementById('inputT2').addEventListener('input', emitInputUpdate);
+
+    socket.on('input_update', (data) => {
+        const i1 = document.getElementById('inputT1');
+        const i2 = document.getElementById('inputT2');
+        // Sadece odaklanılmayan alanı güncelle (kendininkini ezme)
+        if (document.activeElement !== i1) {
+            i1.value = data.v1;
+            i1.style.borderColor = data.v1 !== '' ? 'var(--gold)' : '';
+        }
+        if (document.activeElement !== i2) {
+            i2.value = data.v2;
+            i2.style.borderColor = data.v2 !== '' ? 'var(--gold)' : '';
+        }
+    });
+
+    // ── PAGES ──
+    function showPage(id) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        window.scrollTo(0, 0);
+    }
+
+    // ── UTILS ──
+    function escHtml(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    let toastTimer;
+    function showToast(msg) {
+        const el = document.getElementById('toast');
+        el.textContent = msg; el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+    }
+
+    // ── 101 CEZA SESİ ──
+    function play101Sound() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+            function beep(freq, startT, dur, vol, type='sawtooth') {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, startT);
+                osc.frequency.exponentialRampToValueAtTime(freq * 0.4, startT + dur);
+                gain.gain.setValueAtTime(vol, startT);
+                gain.gain.exponentialRampToValueAtTime(0.001, startT + dur);
+                osc.start(startT);
+                osc.stop(startT + dur);
+            }
+
+            const t = ctx.currentTime;
+            // Dramatik "wah-wah-wah" inen ses — komik yas müziği tarzı
+            beep(440, t,        0.22, 0.5);
+            beep(370, t + 0.24, 0.22, 0.5);
+            beep(311, t + 0.48, 0.22, 0.5);
+            beep(233, t + 0.72, 0.45, 0.6);
+
+            // Arka planda hafif gürültü (dramatik etki)
+            const bufSize = ctx.sampleRate * 0.15;
+            const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+            const data = buf.getChannelData(0);
+            for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.08;
+            const noise = ctx.createBufferSource();
+            noise.buffer = buf;
+            const ng = ctx.createGain();
+            ng.gain.setValueAtTime(0.15, t + 0.72);
+            ng.gain.exponentialRampToValueAtTime(0.001, t + 1.2);
+            noise.connect(ng);
+            ng.connect(ctx.destination);
+            noise.start(t + 0.72);
+        } catch(e) {}
+    }
+
+    socket.on('penalty_101', (data) => {
+        play101Sound();
+        const names = (data.names || []).join(' ve ');
+        showToast('💀 ' + names + ' 101 yedi!');
+    });
+</script>
+</body>
+</html>
