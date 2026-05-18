@@ -264,15 +264,38 @@
         }
         .sound-panel h4 {
             font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px;
-            color: #4a9a4a; margin-bottom: 12px; font-weight: 700;
+            color: #4a9a4a; margin-bottom: 10px; font-weight: 700;
         }
-        .sound-panel-btns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-        .sound-panel-btns button {
-            padding: 12px 6px; background: #12261a; border: 1.5px solid #2a4a2a;
-            border-radius: 10px; color: #6abf6a; font-size: 0.8rem; font-weight: 700;
-            cursor: pointer; transition: all 0.2s; text-align: center;
+        .yt-input-row {
+            display: flex; gap: 8px; align-items: center;
         }
-        .sound-panel-btns button:hover { border-color: var(--green); color: var(--green); background: #162e1e; }
+        .yt-input-row input {
+            flex: 1; background: #12261a; border: 1.5px solid #2a4a2a;
+            border-radius: 8px; color: var(--text); padding: 9px 12px;
+            font-size: 0.85rem;
+        }
+        .yt-input-row input::placeholder { color: #3a6a3a; }
+        .yt-input-row input:focus { outline: none; border-color: var(--green); }
+        .yt-play-btn {
+            background: var(--red); border: none; border-radius: 8px;
+            color: #fff; padding: 9px 14px; font-size: 1rem; cursor: pointer;
+            font-weight: 700; white-space: nowrap; transition: opacity 0.2s;
+        }
+        .yt-play-btn:hover { opacity: 0.85; }
+        .yt-stop-btn {
+            background: #2a2a2a; border: none; border-radius: 8px;
+            color: var(--muted); padding: 9px 12px; font-size: 1rem; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .yt-stop-btn:hover { color: var(--red); }
+        .yt-player-wrap {
+            margin-top: 10px; border-radius: 10px; overflow: hidden;
+            display: none; position: relative; padding-bottom: 40%;
+        }
+        .yt-player-wrap iframe {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            border: none; border-radius: 10px;
+        }
 
         /* HISTORY TABLE */
         .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -368,11 +391,14 @@
 
     <!-- Ses Paneli — sadece süper admin görür -->
     <div class="sound-panel" id="soundPanel">
-        <h4>🎵 Ses Paneli</h4>
-        <div class="sound-panel-btns">
-            <button onclick="soundAction1()">🔔<br>Buton 1</button>
-            <button onclick="soundAction2()">🎺<br>Buton 2</button>
-            <button onclick="soundAction3()">🥁<br>Buton 3</button>
+        <h4>🎵 YouTube Ses Paneli</h4>
+        <div class="yt-input-row">
+            <input type="text" id="ytUrlInput" placeholder="YouTube linki yapıştır...">
+            <button class="yt-play-btn" onclick="ytPlay()">▶ Oynat</button>
+            <button class="yt-stop-btn" onclick="ytStop()" title="Durdur">■</button>
+        </div>
+        <div class="yt-player-wrap" id="ytPlayerWrap">
+            <iframe id="ytFrame" allowfullscreen allow="autoplay; encrypted-media"></iframe>
         </div>
     </div>
 
@@ -528,7 +554,7 @@
         const cls = connected ? 'status-dot connected' : 'status-dot connecting';
         const txt = connected ? 'Canlı bağlantı aktif' : 'Bağlanıyor...';
         document.getElementById('statusDot').className = cls;
-        document.getElementById('statusDot2').className = cls.replace(' connecting', '').replace('connected', 'connected');
+        document.getElementById('statusDot2').className = cls;
         document.getElementById('statusText').textContent = txt;
     }
 
@@ -829,16 +855,42 @@
         socket.emit('super_admin_login', { password: pw });
     }
 
-    // ── SES PANELİ ──
-    function soundAction1() {
-        showToast('🔔 Buton 1 çalıştırıldı');
+    // ── SES PANELİ (YouTube) ──
+    function ytExtractId(url) {
+        try {
+            const u = new URL(url.trim());
+            // youtu.be/ID
+            if (u.hostname === 'youtu.be') return u.pathname.slice(1).split('?')[0];
+            // youtube.com/watch?v=ID  veya  /shorts/ID  veya  /embed/ID
+            if (u.hostname.includes('youtube.com')) {
+                if (u.searchParams.get('v')) return u.searchParams.get('v');
+                const m = u.pathname.match(/\/(shorts|embed)\/([^/?]+)/);
+                if (m) return m[2];
+            }
+        } catch {}
+        return null;
     }
-    function soundAction2() {
-        showToast('🎺 Buton 2 çalıştırıldı');
+
+    function ytPlay() {
+        const url = document.getElementById('ytUrlInput').value.trim();
+        const vid = ytExtractId(url);
+        if (!vid) { showToast('⚠️ Geçerli bir YouTube linki gir'); return; }
+        const frame = document.getElementById('ytFrame');
+        frame.src = `https://www.youtube.com/embed/${vid}?autoplay=1&rel=0`;
+        document.getElementById('ytPlayerWrap').style.display = 'block';
     }
-    function soundAction3() {
-        showToast('🥁 Buton 3 çalıştırıldı');
+
+    function ytStop() {
+        const frame = document.getElementById('ytFrame');
+        frame.src = '';
+        document.getElementById('ytPlayerWrap').style.display = 'none';
+        document.getElementById('ytUrlInput').value = '';
     }
+
+    // Enter ile oynat
+    document.getElementById('ytUrlInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') ytPlay();
+    });
 
     function openCreateModal() {
         document.getElementById('newTableName').value = '';

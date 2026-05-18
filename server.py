@@ -10,8 +10,41 @@ app.config['SECRET_KEY'] = 'okey101secret'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 TABLES_FILE = 'tables.json'
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+# Render.com "postgres://" → psycopg2 needs "postgresql://"
+if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
+    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+
+def _db_conn():
+    import psycopg2
+    return psycopg2.connect(DATABASE_URL, sslmode='require')
+
+def _db_init():
+    """Tablo yoksa oluştur."""
+    with _db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS app_data (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+            """)
 
 def load_tables():
+    if DATABASE_URL:
+        try:
+            _db_init()
+            with _db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT value FROM app_data WHERE key = 'tables'")
+                    row = cur.fetchone()
+                    if row:
+                        return json.loads(row[0])
+        except Exception as e:
+            print(f'[DB] load error: {e}')
+        return {}
+    # Yerel JSON dosyası
     if os.path.exists(TABLES_FILE):
         try:
             with open(TABLES_FILE, 'r', encoding='utf-8') as f:
@@ -21,8 +54,19 @@ def load_tables():
     return {}
 
 def save_tables():
-    with open(TABLES_FILE, 'w', encoding='utf-8') as f:
-        json.dump(tables, f, ensure_ascii=False)
+    if DATABASE_URL:
+        try:
+            with _db_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO app_data (key, value) VALUES ('tables', %s)
+                        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+                    """, (json.dumps(tables, ensure_ascii=False),))
+        except Exception as e:
+            print(f'[DB] save error: {e}')
+    else:
+        with open(TABLES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(tables, f, ensure_ascii=False)
 
 def make_id():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
